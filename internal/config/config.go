@@ -6,14 +6,14 @@ import (
 )
 
 type Config struct {
-	Port     string
-	RedisURL string
-
+	Port                 string
+	RedisURL             string
 	DefaultProcessorURL  string
 	FallbackProcessorURL string
-
-	HealthCheckInterval time.Duration
-	RequestTimeout      time.Duration
+	HealthCheckInterval  time.Duration
+	RequestTimeout       time.Duration
+	MaxQueueSize         int
+	ProcessorThreshold   int
 }
 
 func Load() *Config {
@@ -23,7 +23,9 @@ func Load() *Config {
 		DefaultProcessorURL:  getEnv("DEFAULT_PROCESSOR_URL", "http://localhost:8001"),
 		FallbackProcessorURL: getEnv("FALLBACK_PROCESSOR_URL", "http://localhost:8002"),
 		HealthCheckInterval:  parseDuration(getEnv("HEALTH_CHECK_INTERVAL", "5s")),
-		RequestTimeout:       parseDuration(getEnv("REQUEST_TIMEOUT", "30s")),
+		RequestTimeout:       parseDuration(getEnv("REQUEST_TIMEOUT", "2s")),
+		MaxQueueSize:         1000,
+		ProcessorThreshold:   300,
 	}
 }
 

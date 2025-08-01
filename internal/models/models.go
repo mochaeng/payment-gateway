@@ -26,3 +26,21 @@ type PaymentSummaryResponse struct {
 	Default  ProcessorSummary `json:"default"`
 	Fallback ProcessorSummary `json:"fallback"`
 }
+
+type ProcessorHealth struct {
+	Failing         bool
+	MinResponseTime int
+	LastChecked     time.Time
+}
+
+type QueuedPayment struct {
+	CorrelationID string
+	Amount        float64
+	CreatedAt     time.Time
+	RetryCount    int
+}
+
+type HealthResponse struct {
+	Failing         bool `json:"failing"`
+	MinResponseTime int  `json:"minResponseTime"`
+}

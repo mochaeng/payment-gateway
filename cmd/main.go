@@ -5,17 +5,18 @@ import (
 
 	"github.com/mochaeng/payment-gateway/internal/app"
 	"github.com/mochaeng/payment-gateway/internal/config"
-	"github.com/mochaeng/payment-gateway/internal/services"
 )
 
 func main() {
-	cfg := config.Load()
-	services := services.NewServices()
+	config := config.Load()
 
-	app := app.NewApp(cfg, services)
+	app, err := app.NewApp(config)
+	if err != nil {
+		log.Fatalf("failed to create application: %s", err)
+	}
 
 	server := app.Mount()
 	if err := app.Run(server); err != nil {
-		log.Fatalf("Error starting server: %w", err)
+		log.Fatalf("Error starting server: %s", err)
 	}
 }

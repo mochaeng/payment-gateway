@@ -1,25 +1,32 @@
 package app
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/mochaeng/payment-gateway/internal/config"
 	"github.com/mochaeng/payment-gateway/internal/services"
+	"github.com/mochaeng/payment-gateway/internal/store"
 	"github.com/valyala/fasthttp"
 )
 
 type Application struct {
-	config         *config.Config
-	defaultClient  *fasthttp.Client
-	fallbackClient *fasthttp.Client
-	services       *services.Service
+	config   *config.Config
+	services *services.Service
 }
 
-func NewApp(config *config.Config, services *services.Service) *Application {
+func NewApp(config *config.Config) (*Application, error) {
+	store, err := store.NewRedisStore(config.RedisURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create store: %w", err)
+	}
+
+	services := services.NewServices(config, store)
+
 	return &Application{
 		config:   config,
 		services: services,
-	}
+	}, nil
 }
 
 func (app *Application) Mount() *fasthttp.Server {

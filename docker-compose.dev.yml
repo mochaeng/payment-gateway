@@ -1,0 +1,38 @@
+version: "3.8"
+
+services:
+    redis:
+        image: redis:7-alpine
+        container_name: payment-gateway-redis-dev
+        ports:
+            - "6379:6379"
+        command: redis-server --maxmemory 80mb --maxmemory-policy allkeys-lru --save ""
+        networks:
+            - internal
+            - payment-processor
+        deploy:
+            resources:
+                limits:
+                    cpus: "0.2"
+                    memory: "90MB"
+        restart: unless-stopped
+
+    redis-cli:
+        image: redis:7-alpine
+        container_name: payment-gateway-redis-cli
+        command: sleep infinity
+        networks:
+            - internal
+        profiles:
+            - debug
+        deploy:
+            resources:
+                limits:
+                    cpus: "0.05"
+                    memory: "10MB"
+
+networks:
+    payment-processor:
+        external: true
+    internal:
+        driver: bridge

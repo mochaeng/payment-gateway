@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
+	"github.com/mochaeng/payment-gateway/internal/constants"
 	"github.com/mochaeng/payment-gateway/internal/models"
 	"github.com/redis/go-redis/v9"
 )
@@ -36,7 +36,7 @@ func NewRedisStore(url string) (*RedisStore, error) {
 	}, nil
 }
 
-func (r *RedisStore) GetProcessorHealth(processor string) (*models.ProcessorHealth, error) {
+func (r *RedisStore) GetProcessorHealth(processor constants.PaymentMode) (*models.ProcessorHealth, error) {
 	healthKey := fmt.Sprintf("%s%s", healthPrefix, processor)
 
 	data, err := r.client.Get(r.ctx, healthKey).Bytes()
@@ -49,7 +49,7 @@ func (r *RedisStore) GetProcessorHealth(processor string) (*models.ProcessorHeal
 	return &health, err
 }
 
-func (r *RedisStore) SetProcessorHealth(processor string, health models.ProcessorHealth) error {
+func (r *RedisStore) SetProcessorHealth(processor constants.PaymentMode, health models.ProcessorHealth) error {
 	data, err := json.Marshal(health)
 	if err != nil {
 		return fmt.Errorf("failed to marshal health processor: %w", err)
@@ -57,7 +57,7 @@ func (r *RedisStore) SetProcessorHealth(processor string, health models.Processo
 
 	healthKey := fmt.Sprintf("%s%s", healthPrefix, processor)
 
-	return r.client.LPush(r.ctx, healthKey, data, 10*time.Second).Err()
+	return r.client.LPush(r.ctx, healthKey, data).Err()
 }
 
 func (r *RedisStore) EnqueuePayment(payment *models.QueuedPayment) error {
@@ -84,6 +84,6 @@ func (r *RedisStore) QueueSize() (int64, error) {
 	return r.client.LLen(r.ctx, paymentQueueKey).Result()
 }
 
-func (r *RedisStore) UpdateSummary(processor string, amount float64) {}
+func (r *RedisStore) UpdateSummary(processor constants.PaymentMode, amount float64) {}
 
 func (r *RedisStore) GetSummary() {}

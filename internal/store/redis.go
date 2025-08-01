@@ -57,7 +57,7 @@ func (r *RedisStore) SetProcessorHealth(processor constants.PaymentMode, health 
 
 	healthKey := fmt.Sprintf("%s%s", healthPrefix, processor)
 
-	return r.client.LPush(r.ctx, healthKey, data).Err()
+	return r.client.Set(r.ctx, healthKey, data, 0).Err()
 }
 
 func (r *RedisStore) EnqueuePayment(payment *models.QueuedPayment) error {

@@ -40,8 +40,10 @@ func (p *PaymentService) Send(correlationID string, amount float64) error {
 }
 
 func (p *PaymentService) processQueue() {
+	fmt.Println("is this shit called")
 	for payment := range p.queue {
 		if err := p.tryProcess(payment); err != nil {
+			fmt.Println(err)
 			payment.RetryCount++
 			if payment.RetryCount < 5 {
 				time.Sleep(time.Duration(payment.RetryCount) * time.Second)
@@ -52,6 +54,8 @@ func (p *PaymentService) processQueue() {
 }
 
 func (p *PaymentService) tryProcess(payment *models.QueuedPayment) error {
+	fmt.Println("Are we even trying to send to processor?")
+
 	defaultHealth, err := p.store.GetProcessorHealth(constants.DefaultProcessorKey)
 	if err != nil {
 		return fmt.Errorf("failed to get default processor health: %w", err)
@@ -75,6 +79,8 @@ func (p *PaymentService) tryProcess(payment *models.QueuedPayment) error {
 
 func (p *PaymentService) processWithProcessor(processor constants.PaymentMode, payment *models.QueuedPayment) error {
 	url := fmt.Sprintf("%s%s", processor, "/payments")
+
+	fmt.Printf("url being request: %s\n", url)
 
 	req := fasthttp.AcquireRequest()
 	resp := fasthttp.AcquireResponse()

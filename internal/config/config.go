@@ -19,7 +19,7 @@ type Config struct {
 func Load() *Config {
 	return &Config{
 		Port:                 getEnv("PORT", "8080"),
-		RedisURL:             getEnv("REDIS_URL", "localhost:6379"),
+		RedisURL:             getEnv("REDIS_URL", "redis://localhost:6379"),
 		DefaultProcessorURL:  getEnv("DEFAULT_PROCESSOR_URL", "http://localhost:8001"),
 		FallbackProcessorURL: getEnv("FALLBACK_PROCESSOR_URL", "http://localhost:8002"),
 		HealthCheckInterval:  parseDuration(getEnv("HEALTH_CHECK_INTERVAL", "5s")),

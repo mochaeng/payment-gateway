@@ -2,19 +2,15 @@ package app
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/mochaeng/payment-gateway/internal/models"
 	"github.com/valyala/fasthttp"
 )
 
-var (
-	defaultCount   = int64(0)
-	defaultAmount  = 0.0
-	fallbackCount  = int64(0)
-	fallbackAmount = 0.0
-)
-
 func (app *Application) paymentsHandler(ctx *fasthttp.RequestCtx) {
+	fmt.Println("receiving payment request")
+
 	var req models.PaymentRequest
 	if err := json.Unmarshal(ctx.PostBody(), &req); err != nil {
 		ctx.SetStatusCode(400)
@@ -30,13 +26,12 @@ func (app *Application) paymentsHandler(ctx *fasthttp.RequestCtx) {
 
 	err := app.services.Payment.Send(req.CorrelationID, req.Amount)
 	if err != nil {
-		defaultCount++
-		defaultAmount += req.Amount
-
-		ctx.SetStatusCode(200)
-		ctx.SetBodyString(`{"message":"Payment processed"}`)
-	} else {
 		ctx.SetStatusCode(500)
 		ctx.SetBodyString(`{"error":"Payment failed"}`)
+		fmt.Println("failed to process:", err)
+	} else {
+		ctx.SetStatusCode(200)
+		ctx.SetBodyString(`{"message":"Payment processed"}`)
 	}
+
 }

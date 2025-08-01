@@ -8,16 +8,7 @@ import (
 )
 
 func handleSummary(ctx *fasthttp.RequestCtx) {
-	response := models.PaymentSummaryResponse{
-		Default: models.ProcessorSummary{
-			TotalRequest: defaultCount,
-			TotalAmount:  defaultAmount,
-		},
-		Fallback: models.ProcessorSummary{
-			TotalRequest: fallbackCount,
-			TotalAmount:  float64(fallbackCount),
-		},
-	}
+	response := models.PaymentSummaryResponse{}
 
 	responseBytes, _ := json.Marshal(response)
 	ctx.SetStatusCode(200)

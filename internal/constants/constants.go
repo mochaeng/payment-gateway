@@ -2,7 +2,7 @@ package constants
 
 type PaymentMode string
 
-var (
+const (
 	DefaultProcessorKey  PaymentMode = "default"
 	FallbackProcessorKey PaymentMode = "fallback"
 )

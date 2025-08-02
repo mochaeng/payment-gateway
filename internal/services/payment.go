@@ -40,7 +40,6 @@ func (p *PaymentService) Send(correlationID string, amount float64) error {
 }
 
 func (p *PaymentService) processQueue() {
-	fmt.Println("is this shit called")
 	for payment := range p.queue {
 		if err := p.tryProcess(payment); err != nil {
 			fmt.Println(err)
@@ -54,8 +53,6 @@ func (p *PaymentService) processQueue() {
 }
 
 func (p *PaymentService) tryProcess(payment *models.QueuedPayment) error {
-	fmt.Println("Are we even trying to send to processor?")
-
 	defaultHealth, err := p.store.GetProcessorHealth(constants.DefaultProcessorKey)
 	if err != nil {
 		return fmt.Errorf("failed to get default processor health: %w", err)
@@ -69,18 +66,16 @@ func (p *PaymentService) tryProcess(payment *models.QueuedPayment) error {
 	switch {
 	case !defaultHealth.Failing &&
 		(defaultHealth.MinResponseTime <= fallbackHealth.MinResponseTime+p.config.ProcessorThreshold):
-		return p.processWithProcessor(constants.DefaultProcessorKey, payment)
+		return p.processPayment(constants.DefaultProcessorKey, payment)
 	case !fallbackHealth.Failing:
-		return p.processWithProcessor(constants.FallbackProcessorKey, payment)
+		return p.processPayment(constants.FallbackProcessorKey, payment)
 	default:
 		return ErrProcessorsDown
 	}
 }
 
-func (p *PaymentService) processWithProcessor(processor constants.PaymentMode, payment *models.QueuedPayment) error {
-	url := fmt.Sprintf("%s%s", processor, "/payments")
-
-	fmt.Printf("url being request: %s\n", url)
+func (p *PaymentService) processPayment(processor constants.PaymentMode, payment *models.QueuedPayment) error {
+	url := p.config.Urls[processor].PaymentURL
 
 	req := fasthttp.AcquireRequest()
 	resp := fasthttp.AcquireResponse()
@@ -103,17 +98,15 @@ func (p *PaymentService) processWithProcessor(processor constants.PaymentMode, p
 	req.Header.SetContentType("application/json")
 	req.SetBody(reqBody)
 
-	// ctx, cancel := context.WithTimeout(context.Background(), p.config.RequestTimeout)
-	// defer cancel()
-
 	if err := p.httpClient.Do(req, resp); err != nil {
 		return fmt.Errorf("failed to do request: %w", err)
 	}
 
 	if resp.StatusCode() >= 500 {
-		return fmt.Errorf("processor error with status code [%d]", resp.StatusCode())
+		return fmt.Errorf("processor with status code [%d]", resp.StatusCode())
 	}
 
+	fmt.Printf("payment successed: %s with %f\n", processor, payment.Amount)
 	p.store.UpdateSummary(processor, payment.Amount)
 
 	return nil

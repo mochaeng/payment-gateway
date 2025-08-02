@@ -19,24 +19,30 @@ type HealthMonitorService struct {
 	httpClient  *fasthttp.Client
 }
 
-func (monitor *HealthMonitorService) Start() {
-	go monitor.monitorLoop()
+func (m *HealthMonitorService) Start() {
+	go m.monitorLoop()
 }
 
-func (monitor *HealthMonitorService) monitorLoop() {
+func (m *HealthMonitorService) monitorLoop() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		if time.Since(monitor.lastChecked) > monitor.config.HealthCheckInterval {
-			monitor.checkProcessor(constants.DefaultProcessorKey)
-			monitor.checkProcessor(constants.FallbackProcessorKey)
+		if time.Since(m.lastChecked) > m.config.HealthCheckInterval {
+			fmt.Println("Cheking all health systems")
+
+			m.checkProcessor(constants.DefaultProcessorKey)
+			m.checkProcessor(constants.FallbackProcessorKey)
+
+			m.lastChecked = time.Now()
 		}
 	}
 }
 
-func (monitor *HealthMonitorService) checkProcessor(processor constants.PaymentMode) {
-	url := fmt.Sprintf("%s%s", processor, "/payments/service-health")
+func (m *HealthMonitorService) checkProcessor(processor constants.PaymentMode) error {
+	url := m.config.Urls[processor].HealthURL
+
+	// fmt.Println("Healthy url: ", url)
 
 	req := fasthttp.AcquireRequest()
 	resp := fasthttp.AcquireResponse()
@@ -49,27 +55,29 @@ func (monitor *HealthMonitorService) checkProcessor(processor constants.PaymentM
 	// ctx, cancel := context.WithTimeout(context.Background(), monitor.config.RequestTimeout)
 	// defer cancel()
 
-	err := monitor.httpClient.Do(req, resp)
+	err := m.httpClient.Do(req, resp)
 	if err != nil {
-		monitor.store.SetProcessorHealth(processor, models.ProcessorHealth{
+		m.store.SetProcessorHealth(processor, models.ProcessorHealth{
 			Failing:     true,
 			LastChecked: time.Now(),
 		})
-		return
+		return err
 	}
 
 	var healthResp models.HealthResponse
 	if err := json.Unmarshal(resp.Body(), &healthResp); err != nil {
-		monitor.store.SetProcessorHealth(processor, models.ProcessorHealth{
+		m.store.SetProcessorHealth(processor, models.ProcessorHealth{
 			Failing:     true,
 			LastChecked: time.Now(),
 		})
-		return
+		return err
 	}
 
-	monitor.store.SetProcessorHealth(processor, models.ProcessorHealth{
+	m.store.SetProcessorHealth(processor, models.ProcessorHealth{
 		Failing:         healthResp.Failing,
 		MinResponseTime: healthResp.MinResponseTime,
 		LastChecked:     time.Now(),
 	})
+
+	return nil
 }

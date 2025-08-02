@@ -31,6 +31,18 @@ services:
                     cpus: "0.05"
                     memory: "10MB"
 
+    redis-commander:
+        image: rediscommander/redis-commander:latest
+        container_name: redis-commander
+        environment:
+            - REDIS_HOSTS=local:redis:6379
+        ports:
+            - "8081:8081"
+        networks:
+            - internal
+        depends_on:
+            - redis
+
 networks:
     payment-processor:
         external: true

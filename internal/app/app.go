@@ -42,9 +42,9 @@ func (app *Application) Mount() *fasthttp.Server {
 					ctx.SetStatusCode(405)
 					ctx.SetBodyString(`{"error":"Method not allowed"}`)
 				}
-			case "payments-summary":
+			case "/payments-summary":
 				if ctx.IsGet() {
-					// handleSummary()
+					app.paymentsSummaryHandler(ctx)
 				} else {
 					ctx.SetStatusCode(405)
 					ctx.SetBodyString(`{"error":"Method not allowed"}`)

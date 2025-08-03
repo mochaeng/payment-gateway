@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/valyala/fasthttp"
@@ -38,10 +39,13 @@ func (app *Application) paymentsSummaryHandler(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	fmt.Printf("Getting payment-summary call [%q] - [%q]\n", from, to)
+
 	summary, err := app.services.Summary.GetSummary(from, to)
 	if err != nil {
 		ctx.SetStatusCode(500)
 		ctx.SetBodyString(`{"error":"Failed to get payment summary"}`)
+		fmt.Println(err)
 		return
 	}
 
@@ -49,6 +53,7 @@ func (app *Application) paymentsSummaryHandler(ctx *fasthttp.RequestCtx) {
 	if err != nil {
 		ctx.SetStatusCode(500)
 		ctx.SetBodyString(`{"error":"Failed to serialize response"}`)
+		fmt.Println(err)
 		return
 	}
 

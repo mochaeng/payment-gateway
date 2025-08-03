@@ -39,7 +39,7 @@ services:
         container_name: payment-gateway-api-1
         environment:
             - PORT=8080
-            - REDIS_URL=redis:6379
+            - REDIS_URL=redis://redis:6379
             - DEFAULT_PROCESSOR_URL=http://payment-processor-default:8080
             - FALLBACK_PROCESSOR_URL=http://payment-processor-fallback:8080
             - INSTANCE_ID=api-1
@@ -64,7 +64,7 @@ services:
         container_name: payment-gateway-api-2
         environment:
             - PORT=8080
-            - REDIS_URL=redis:6379
+            - REDIS_URL=redis://redis:6379
             - DEFAULT_PROCESSOR_URL=http://payment-processor-default:8080
             - FALLBACK_PROCESSOR_URL=http://payment-processor-fallback:8080
             - INSTANCE_ID=api-2

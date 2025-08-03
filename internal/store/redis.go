@@ -85,6 +85,22 @@ func (r *RedisStore) DequeuePayment() (*models.QueuedPayment, error) {
 	return &payment, err
 }
 
+func (r *RedisStore) BlockingDequeuePayment(timeout time.Duration) (*models.QueuedPayment, error) {
+	result, err := r.client.BRPop(r.ctx, timeout, paymentQueueKey).Result()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(result) < 2 {
+		return nil, fmt.Errorf("invalid BRPop result")
+	}
+
+	data := result[1]
+	var payment models.QueuedPayment
+	err = json.Unmarshal([]byte(data), &payment)
+	return &payment, err
+}
+
 func (r *RedisStore) QueueSize() (int64, error) {
 	return r.client.LLen(r.ctx, paymentQueueKey).Result()
 }

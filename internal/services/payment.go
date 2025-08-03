@@ -10,6 +10,7 @@ import (
 	"github.com/mochaeng/payment-gateway/internal/constants"
 	"github.com/mochaeng/payment-gateway/internal/models"
 	"github.com/mochaeng/payment-gateway/internal/store"
+	"github.com/redis/go-redis/v9"
 	"github.com/valyala/fasthttp"
 )
 
@@ -27,29 +28,54 @@ type PaymentService struct {
 }
 
 func (p *PaymentService) Send(correlationID string, amount float64) error {
-	select {
-	case p.queue <- &models.QueuedPayment{
+	return p.store.EnqueuePayment(&models.QueuedPayment{
 		CorrelationID: correlationID,
 		Amount:        amount,
-		CreatedAt:     time.Now(),
-	}:
-		return nil
-	default:
-		return ErrQueueFull
-	}
+	})
+	// select {
+	// case p.queue <- &models.QueuedPayment{
+	// 	CorrelationID: correlationID,
+	// 	Amount:        amount,
+	// 	CreatedAt:     time.Now(),
+	// }:
+	// 	return nil
+	// default:
+	// 	return ErrQueueFull
+	// }
 }
 
 func (p *PaymentService) processQueue() {
-	for payment := range p.queue {
-		if err := p.tryProcess(payment); err != nil {
-			fmt.Println(err)
-			payment.RetryCount++
-			if payment.RetryCount < 5 {
-				time.Sleep(time.Duration(payment.RetryCount) * time.Second)
-				p.queue <- payment
+	for {
+		payment, err := p.store.BlockingDequeuePayment(5 * time.Second)
+		if err != nil {
+			if err != redis.Nil {
+				fmt.Printf("Failed to dequeue payment: %s\n", err)
 			}
+			continue
+		}
+
+		if err := p.tryProcess(payment); err != nil {
+			payment.RetryCount++
+			go func() {
+				time.Sleep(time.Duration(payment.RetryCount) * time.Second)
+				err := p.store.EnqueuePayment(payment)
+				if err != nil {
+					fmt.Printf("Failed to enqueue retried payment: %s", err)
+				}
+			}()
 		}
 	}
+
+	// for payment := range p.queue {
+	// 	if err := p.tryProcess(payment); err != nil {
+	// 		fmt.Println(err)
+	// 		payment.RetryCount++
+	// 		if payment.RetryCount < 5 {
+	// 			time.Sleep(time.Duration(payment.RetryCount) * time.Second)
+	// 			p.queue <- payment
+	// 		}
+	// 	}
+	// }
 }
 
 func (p *PaymentService) tryProcess(payment *models.QueuedPayment) error {

@@ -108,14 +108,13 @@ func (r *RedisStore) QueueSize() (int64, error) {
 func (r *RedisStore) UpdateSummary(processor constants.PaymentMode, amount float64) error {
 	now := time.Now().UTC()
 	timestamp := now.Unix()
-
 	timeStampNano := now.UnixNano()
 
 	recordsKey := fmt.Sprintf("%s%s:records", paymentPrefix, processor)
+	totalAmountKey := fmt.Sprintf("%s%s%s", summaryPrefix, totalAmountPrefix, processor)
+	totalCountKey := fmt.Sprintf("%s%s%s", summaryPrefix, totalCountPrefix, processor)
 
-	pipe := r.client.Pipeline()
-
-	paymentRecord := map[string]interface{}{
+	paymentRecord := map[string]any{
 		"amount":    amount,
 		"timestamp": timestamp,
 	}
@@ -125,20 +124,33 @@ func (r *RedisStore) UpdateSummary(processor constants.PaymentMode, amount float
 		return fmt.Errorf("failed to marshal payment record: %w", err)
 	}
 
-	pipe.ZAdd(r.ctx, recordsKey, redis.Z{
-		Score:  float64(timestamp),
-		Member: fmt.Sprintf("%d:%s", timeStampNano, string(recordData)),
-	})
+	luaScript := `
+		redis.call('ZADD', KEYS[1], ARGV[1], ARGV[2])
+		redis.call('INCRBYFLOAT', KEYS[2], ARGV[3])
+		redis.call('INCR', KEYS[3])
+		return 'OK'
+	`
 
-	totalAmountKey := fmt.Sprintf("%s%s%s", summaryPrefix, totalAmountPrefix, processor)
-	totalCountKey := fmt.Sprintf("%s%s%s", summaryPrefix, totalCountPrefix, processor)
+	member := fmt.Sprintf("%d:%s", timeStampNano, string(recordData))
 
-	pipe.IncrByFloat(r.ctx, totalAmountKey, amount)
-	pipe.Incr(r.ctx, totalCountKey)
+	_, err = r.client.Eval(r.ctx, luaScript, []string{
+		recordsKey,
+		totalAmountKey,
+		totalCountKey,
+	}, float64(timestamp), member, amount).Result()
 
-	_, err = pipe.Exec(r.ctx)
+	if err != nil {
+		return fmt.Errorf("failed to update summary atomically: %w", err)
+	}
 
-	return err
+	// pipe.ZAdd(r.ctx, recordsKey, redis.Z{
+	// 	Score:  float64(timestamp),
+	// 	Member: fmt.Sprintf("%d:%s", timeStampNano, string(recordData)),
+	// })
+	// pipe.IncrByFloat(r.ctx, totalAmountKey, amount)
+	// pipe.Incr(r.ctx, totalCountKey)
+
+	return nil
 }
 
 func (r *RedisStore) GetSummary(from, to *time.Time) (*models.PaymentSummaryResponse, error) {
@@ -246,4 +258,23 @@ func (r *RedisStore) getTimeFilteredSummary(processor constants.PaymentMode, fro
 		TotalRequest: totalCount,
 		TotalAmount:  totalAmount,
 	}, nil
+}
+
+func (r *RedisStore) SetProcessedPayment(correlationID string, processor constants.PaymentMode, ttl time.Duration) (bool, error) {
+	processedKey := fmt.Sprintf("processed:%s", correlationID)
+	return r.client.SetNX(r.ctx, processedKey, processor, ttl).Result()
+}
+
+func (r *RedisStore) RemoveProcessedPayment(correlationID string) (int64, error) {
+	processedKey := fmt.Sprintf("processed:%s", correlationID)
+	return r.client.Del(r.ctx, processedKey).Result()
+}
+
+func (r *RedisStore) IsPaymentProcessed(correlationID string) (bool, string, error) {
+	processedKey := fmt.Sprintf("processed:%s", correlationID)
+	result, err := r.client.Get(r.ctx, processedKey).Result()
+	if err != nil {
+		return false, "", err
+	}
+	return true, result, nil
 }

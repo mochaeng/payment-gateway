@@ -32,16 +32,6 @@ func (p *PaymentService) Send(correlationID string, amount float64) error {
 		CorrelationID: correlationID,
 		Amount:        amount,
 	})
-	// select {
-	// case p.queue <- &models.QueuedPayment{
-	// 	CorrelationID: correlationID,
-	// 	Amount:        amount,
-	// 	CreatedAt:     time.Now(),
-	// }:
-	// 	return nil
-	// default:
-	// 	return ErrQueueFull
-	// }
 }
 
 func (p *PaymentService) processQueue() {
@@ -55,27 +45,24 @@ func (p *PaymentService) processQueue() {
 		}
 
 		if err := p.tryProcess(payment); err != nil {
-			payment.RetryCount++
-			go func() {
-				time.Sleep(time.Duration(payment.RetryCount) * time.Second)
-				err := p.store.EnqueuePayment(payment)
-				if err != nil {
-					fmt.Printf("Failed to enqueue retried payment: %s", err)
-				}
-			}()
+			if payment.RetryCount < 3 {
+				payment.RetryCount++
+
+				backoffDuration := time.Duration(payment.RetryCount*payment.RetryCount) * time.Second
+
+				go func(payment *models.QueuedPayment) {
+					time.Sleep(backoffDuration)
+					if err := p.store.EnqueuePayment(payment); err != nil {
+						fmt.Printf("Failed to enqueue retried payment [%s] with [%s]\n",
+							payment.CorrelationID, err)
+					}
+				}(payment)
+			} else {
+				fmt.Printf("Payment %s failed after %d retries, giving up\n",
+					payment.CorrelationID, payment.RetryCount)
+			}
 		}
 	}
-
-	// for payment := range p.queue {
-	// 	if err := p.tryProcess(payment); err != nil {
-	// 		fmt.Println(err)
-	// 		payment.RetryCount++
-	// 		if payment.RetryCount < 5 {
-	// 			time.Sleep(time.Duration(payment.RetryCount) * time.Second)
-	// 			p.queue <- payment
-	// 		}
-	// 	}
-	// }
 }
 
 func (p *PaymentService) tryProcess(payment *models.QueuedPayment) error {
@@ -90,9 +77,11 @@ func (p *PaymentService) tryProcess(payment *models.QueuedPayment) error {
 	}
 
 	switch {
-	case !defaultHealth.Failing &&
-		(defaultHealth.MinResponseTime <= fallbackHealth.MinResponseTime+p.config.ProcessorThreshold):
+	case !defaultHealth.Failing:
 		return p.processPayment(constants.DefaultProcessorKey, payment)
+	// case !defaultHealth.Failing &&
+	// 	(defaultHealth.MinResponseTime <= fallbackHealth.MinResponseTime+p.config.ProcessorThreshold):
+	// 	return p.processPayment(constants.DefaultProcessorKey, payment)
 	case !fallbackHealth.Failing:
 		return p.processPayment(constants.FallbackProcessorKey, payment)
 	default:
@@ -101,6 +90,17 @@ func (p *PaymentService) tryProcess(payment *models.QueuedPayment) error {
 }
 
 func (p *PaymentService) processPayment(processor constants.PaymentMode, payment *models.QueuedPayment) error {
+	processedKey := fmt.Sprintf("processed:%s", payment.CorrelationID)
+
+	isSet, err := p.store.SetProcessedPayment(processedKey, processor, 5*time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to check payment processing status: %w", err)
+	}
+
+	if !isSet {
+		fmt.Printf("payment [%s] already processed, skipping\n", payment.CorrelationID)
+	}
+
 	url := p.config.Urls[processor].PaymentURL
 
 	req := fasthttp.AcquireRequest()
@@ -116,6 +116,7 @@ func (p *PaymentService) processPayment(processor constants.PaymentMode, payment
 
 	reqBody, err := json.Marshal(paymentReq)
 	if err != nil {
+		p.store.RemoveProcessedPayment(processedKey)
 		return fmt.Errorf("failed to marshal payment request: %w", err)
 	}
 
@@ -125,15 +126,21 @@ func (p *PaymentService) processPayment(processor constants.PaymentMode, payment
 	req.SetBody(reqBody)
 
 	if err := p.httpClient.Do(req, resp); err != nil {
+		p.store.RemoveProcessedPayment(processedKey)
 		return fmt.Errorf("failed to do request: %w", err)
 	}
 
-	if resp.StatusCode() >= 500 {
+	if resp.StatusCode() >= 400 {
+		p.store.RemoveProcessedPayment(processedKey)
 		return fmt.Errorf("processor with status code [%d]", resp.StatusCode())
 	}
 
+	if err := p.store.UpdateSummary(processor, payment.Amount); err != nil {
+		fmt.Printf("CRITICAL: failed to update summary for payment [%s] with value [%f]\n", payment.CorrelationID, payment.Amount)
+		return fmt.Errorf("failed to update summary: %w", err)
+	}
+
 	fmt.Printf("payment successed: %s with %f\n", processor, payment.Amount)
-	p.store.UpdateSummary(processor, payment.Amount)
 
 	return nil
 }
